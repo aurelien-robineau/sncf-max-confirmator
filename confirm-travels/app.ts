@@ -26,11 +26,10 @@ export const lambdaHandler = async (event: APIGatewayProxyEvent): Promise<APIGat
       }),
     };
   }
-  console.log(refreshToken, cardNumber);
+
   const sncfApi = new SNCFMaxJeuneAPI(refreshToken);
   try {
     const travels = await sncfApi.getTravels(cardNumber, new Date(Date.now() - (1000 * 60 * 60 * 24)));
-    console.log(JSON.stringify(travels, null, 2));
 
     const travelsToConfirm = travels.filter((travel) => travel.travelConfirmed === "TO_BE_CONFIRMED");
     if (travelsToConfirm.length === 0) {
@@ -46,7 +45,6 @@ export const lambdaHandler = async (event: APIGatewayProxyEvent): Promise<APIGat
       await sncfApi.confirmTravel(travel);
     }
 
-    console.log(`Successfully confirmed ${travels.length} travel(s).`);
     return {
       statusCode: 204,
       body: JSON.stringify({
