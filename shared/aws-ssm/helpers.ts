@@ -33,3 +33,25 @@ export async function getSNCFCardNumber(): Promise<string> {
 
   return cardNumber;
 }
+
+export async function updateParameter(name: string, value: string): Promise<void> {
+  try {
+    await ssm.putParameter({
+      Name: name,
+      Value: value,
+      Type: "SecureString",
+      Overwrite: true,
+    }).promise();
+  }
+  catch (err) {
+    console.error(`Error updating parameter ${name} in AWS SSM.`, err);
+  }
+}
+
+export async function updateSNCFRefreshToken(refreshToken: string): Promise<void> {
+  await updateParameter(SSMConfig.RefreshTokenParameterName, refreshToken);
+}
+
+export async function updateSNCFCardNumber(cardNumber: string): Promise<void> {
+  await updateParameter(SSMConfig.CardNumberParameterName, cardNumber);
+}

@@ -43,7 +43,15 @@ export default class SNCFMaxJeuneAPI {
 
   private token: string | null = null;
 
-  constructor(private refreshToken: string) {}
+  constructor(private _refreshToken: string) {}
+
+  public get refreshToken(): string {
+    return this._refreshToken;
+  }
+
+  private set refreshToken(value: string) {
+    this._refreshToken = value;
+  }
 
   private mustRefreshToken(): boolean {
     let mustRefresh = false;

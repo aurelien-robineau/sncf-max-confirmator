@@ -1,6 +1,6 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from "aws-lambda";
-import { getSNCFCardNumber, getSNCFRefreshToken } from "../aws-ssm/helpers";
-import SNCFMaxJeuneAPI from "../sncf-max-jeune/api";
+import { getSNCFCardNumber, getSNCFRefreshToken, updateSNCFRefreshToken } from "../../shared/aws-ssm/helpers";
+import SNCFMaxJeuneAPI, { Travel } from "../../shared/sncf-max-jeune/api";
 
 /**
  *
@@ -28,8 +28,10 @@ export const lambdaHandler = async (event: APIGatewayProxyEvent): Promise<APIGat
   }
 
   const sncfApi = new SNCFMaxJeuneAPI(refreshToken);
+
+  let travels: Travel[];
   try {
-    const travels = await sncfApi.getTravels(cardNumber, new Date(Date.now() - (1000 * 60 * 60 * 24)));
+    travels = await sncfApi.getTravels(cardNumber, new Date(Date.now() - (1000 * 60 * 60 * 24)));
 
     const travelsToConfirm = travels.filter((travel) => travel.travelConfirmed === "TO_BE_CONFIRMED");
     if (travelsToConfirm.length === 0) {
@@ -44,13 +46,6 @@ export const lambdaHandler = async (event: APIGatewayProxyEvent): Promise<APIGat
     for (const travel of travelsToConfirm) {
       await sncfApi.confirmTravel(travel);
     }
-
-    return {
-      statusCode: 204,
-      body: JSON.stringify({
-        message: `Successfully confirmed ${travels.length} travel(s).`,
-      }),
-    };
   } catch (err) {
     return {
       statusCode: 500,
@@ -59,4 +54,17 @@ export const lambdaHandler = async (event: APIGatewayProxyEvent): Promise<APIGat
       }),
     };
   }
+
+  if (sncfApi.refreshToken !== refreshToken) {
+    updateSNCFRefreshToken(sncfApi.refreshToken).catch((err) => {
+      console.error("Error updating SNCF Refresh Token in SSM.", err);
+    });
+  }
+
+  return {
+    statusCode: 204,
+    body: JSON.stringify({
+      message: `Successfully confirmed ${travels.length} travel(s).`,
+    }),
+  };
 };
