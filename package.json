@@ -10,7 +10,7 @@
     "lint": "eslint '*.ts' --quiet --fix",
     "compile": "tsc",
     "test": "npm run compile && npm run unit",
-    "deploy": "sam deploy"
+    "deploy": "tsc && sam build && sam deploy"
   },
   "dependencies": {
     "aws-sdk": "^2.1692.0",
