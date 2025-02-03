@@ -1,6 +1,35 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from "aws-lambda";
-import { getSNCFCardNumber, getSNCFRefreshToken, updateSNCFRefreshToken } from "../../shared/aws-ssm/helpers";
+import { getParameterValue, updateParameter } from "../../shared/aws-ssm/helpers";
 import SNCFMaxJeuneAPI, { Travel } from "../../shared/sncf-max-jeune/api";
+import { SSMConfig } from "../../shared/aws-ssm/config";
+
+interface SNCFUser {
+  cardNumber: string;
+  refreshToken: string;
+}
+
+async function getUsers(): Promise<SNCFUser[]> {
+  const usersAsJSONString = await getParameterValue(SSMConfig.UsersParameterName, true);
+  if (!usersAsJSONString) {
+    throw new Error("Cannot get SNCF users from SSM.");
+  }
+
+  let users;
+  try {
+    users = JSON.parse(usersAsJSONString);
+  }
+  catch (err) {
+    throw new Error("Cannot parse SNCF users from SSM.");
+  }
+
+  if (!Array.isArray(users)) {
+    throw new Error("SNCF users is not an array.");
+  }
+
+  users = users.filter((user) => user.cardNumber && user.refreshToken);
+
+  return users;
+}
 
 /**
  *
@@ -13,58 +42,70 @@ import SNCFMaxJeuneAPI, { Travel } from "../../shared/sncf-max-jeune/api";
  */
 
 export const lambdaHandler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> => {
-  let refreshToken: string, cardNumber: string;
+  let users: SNCFUser[];
   try {
-    refreshToken = await getSNCFRefreshToken();
-    cardNumber = await getSNCFCardNumber();
+    users = await getUsers();
   }
-  catch (err) {
+  catch (err: any) {
     return {
       statusCode: 500,
       body: JSON.stringify({
-        message: "Cannot get SNCF Refresh Token and/or Card Number from SSM.",
+        message: err.message ?? "An error occurred while retrieving SNCF users.",
       }),
     };
   }
 
-  const sncfApi = new SNCFMaxJeuneAPI(refreshToken);
+  const confirmedTravelsCount: { [key: string]: number } = {};
+  for (const user of users) {
+    const { cardNumber, refreshToken } = user;
+    confirmedTravelsCount[cardNumber] = 0;
 
-  let travels: Travel[];
-  try {
-    travels = await sncfApi.getTravels(cardNumber, new Date(Date.now() - (1000 * 60 * 60 * 24)));
+    const sncfApi = new SNCFMaxJeuneAPI(refreshToken);
 
+    let travels: Travel[] = [];
+    try {
+      travels = await sncfApi.getTravels(cardNumber, new Date(Date.now() - (1000 * 60 * 60 * 24)));
+    }
+    catch (err) {
+      console.error(`Error retrieving travels for card number ${user.cardNumber}.`);
+      continue;
+    }
+  
     const travelsToConfirm = travels.filter((travel) => travel.travelConfirmed === "TO_BE_CONFIRMED");
     if (travelsToConfirm.length === 0) {
-      return {
-        statusCode: 204,
-        body: JSON.stringify({
-          message: `No travels to confirm.`,
-        }),
-      };
+      user.refreshToken = sncfApi.refreshToken;
+      continue;
     }
-
+  
     for (const travel of travelsToConfirm) {
-      await sncfApi.confirmTravel(travel);
+      try {
+        await sncfApi.confirmTravel(travel);
+        confirmedTravelsCount[cardNumber]++;
+      }
+      catch (err) {
+        console.error(`Error confirming travel ${travel.orderId} for card number ${user.cardNumber}.`);
+      }
     }
-  } catch (err) {
-    return {
-      statusCode: 500,
-      body: JSON.stringify({
-        message: "An error occurred while confirming travels.",
-      }),
-    };
+
+    user.refreshToken = sncfApi.refreshToken;
   }
 
-  if (sncfApi.refreshToken !== refreshToken) {
-    updateSNCFRefreshToken(sncfApi.refreshToken).catch((err) => {
-      console.error("Error updating SNCF Refresh Token in SSM.", err);
-    });
-  }
+  updateParameter(SSMConfig.UsersParameterName, JSON.stringify(users)).catch((err) => {
+    console.error("Error updating SNCF users in SSM.", err);
+  });
+
+  const totalConfirmedTravelsCount = Object.values(confirmedTravelsCount).reduce((acc, count) => acc + count, 0);
+
+  const stringifiedConfirmedTravelsCount = Object.entries(confirmedTravelsCount)
+    .map(([cardNumber, count]) => `- ${cardNumber}: ${count}`)
+    .join("\n");
 
   return {
     statusCode: 204,
     body: JSON.stringify({
-      message: `Successfully confirmed ${travels.length} travel(s).`,
+      message: totalConfirmedTravelsCount === 0
+        ? "No travels confirmed."
+        : `Travels confirmed: ${stringifiedConfirmedTravelsCount}`,
     }),
   };
 };

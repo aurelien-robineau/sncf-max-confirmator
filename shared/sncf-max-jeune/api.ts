@@ -92,7 +92,13 @@ export default class SNCFMaxJeuneAPI {
       }),
     });
 
-    return await response.json() as Travel[];
+    const data = await response.json();
+
+    if (!Array.isArray(data)) {
+      throw new Error("Cannot get travels from SNCF Max Jeune.");
+    }
+
+    return data as Travel[];
   }
 
   async getToken(): Promise<GetTokenData> {

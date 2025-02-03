@@ -1,5 +1,4 @@
 import ssm from ".";
-import { SSMConfig } from "./config";
 
 export async function getParameterValue(name: string, withDecryption: boolean): Promise<string | null> {
   try {
@@ -16,24 +15,6 @@ export async function getParameterValue(name: string, withDecryption: boolean): 
   }
 }
 
-export async function getSNCFRefreshToken(): Promise<string> {
-  const refreshToken = await getParameterValue(SSMConfig.RefreshTokenParameterName, true);
-  if (!refreshToken) {
-    throw new Error("SNCF Refresh token not found in AWS SSM.");
-  }
-
-  return refreshToken;
-}
-
-export async function getSNCFCardNumber(): Promise<string> {
-  const cardNumber = await getParameterValue(SSMConfig.CardNumberParameterName, true);
-  if (!cardNumber) {
-    throw new Error("SNCF Card number not found in AWS SSM.");
-  }
-
-  return cardNumber;
-}
-
 export async function updateParameter(name: string, value: string): Promise<void> {
   try {
     await ssm.putParameter({
@@ -46,12 +27,4 @@ export async function updateParameter(name: string, value: string): Promise<void
   catch (err) {
     console.error(`Error updating parameter ${name} in AWS SSM.`, err);
   }
-}
-
-export async function updateSNCFRefreshToken(refreshToken: string): Promise<void> {
-  await updateParameter(SSMConfig.RefreshTokenParameterName, refreshToken);
-}
-
-export async function updateSNCFCardNumber(cardNumber: string): Promise<void> {
-  await updateParameter(SSMConfig.CardNumberParameterName, cardNumber);
 }
