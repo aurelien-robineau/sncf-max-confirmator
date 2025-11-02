@@ -7,18 +7,19 @@ import ssm from ".";
  * @returns The parameter value, or null if not found or an error occurs.
  */
 export async function getParameterValue(name: string, withDecryption: boolean): Promise<string | null> {
-  try {
-    const data = await ssm.getParameter({
-      Name: name,
-      WithDecryption: withDecryption,
-    }).promise();
+    try {
+        const data = await ssm
+            .getParameter({
+                Name: name,
+                WithDecryption: withDecryption,
+            })
+            .promise();
 
-    return data?.Parameter?.Value ?? null;
-  }
-  catch (err) {
-    console.error(`Error retrieving parameter ${name} from AWS SSM.`, err);
-    return null;
-  }
+        return data?.Parameter?.Value ?? null;
+    } catch (err) {
+        console.error(`Error retrieving parameter ${name} from AWS SSM.`, err);
+        return null;
+    }
 }
 
 /**
@@ -29,15 +30,16 @@ export async function getParameterValue(name: string, withDecryption: boolean): 
  * @returns Promise that resolves when the parameter is updated.
  */
 export async function updateParameter(name: string, value: string): Promise<void> {
-  try {
-    await ssm.putParameter({
-      Name: name,
-      Value: value,
-      Type: "SecureString",
-      Overwrite: true,
-    }).promise();
-  }
-  catch (err) {
-    console.error(`Error updating parameter ${name} in AWS SSM.`, err);
-  }
+    try {
+        await ssm
+            .putParameter({
+                Name: name,
+                Value: value,
+                Type: "SecureString",
+                Overwrite: true,
+            })
+            .promise();
+    } catch (err) {
+        console.error(`Error updating parameter ${name} in AWS SSM.`, err);
+    }
 }
