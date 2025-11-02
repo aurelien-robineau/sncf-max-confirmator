@@ -57,6 +57,7 @@ export default class SNCFMaxJeuneAPI {
     "X-Client-App-Version": "2.42.1",
     "X-Distribution-Channel": "OUI",
     Referer: "https://www.maxjeune-tgvinoui.sncf/sncf-connect/mes-voyages",
+    Origin: "https://www.maxjeune-tgvinoui.sncf",
   };
 
   private _accessToken: string;
@@ -99,10 +100,12 @@ export default class SNCFMaxJeuneAPI {
    * @throws Error if the refresh request fails.
    */
   private async refreshToken(): Promise<void> {
+    const { "Content-Type": _, ...refreshHeaders } = SNCFMaxJeuneAPI.DEFAULT_HEADERS;
+
     const response = await fetch(`${SNCFMaxJeuneAPI.BASE_URL}/auth/refresh`, {
       method: "POST",
       headers: {
-        ...SNCFMaxJeuneAPI.DEFAULT_HEADERS,
+        ...refreshHeaders,
         Cookie: `auth=${this._accessToken}`,
       },
     });
