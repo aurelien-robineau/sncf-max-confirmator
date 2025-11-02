@@ -94,14 +94,46 @@ export default class SNCFMaxJeuneAPI {
     }
 
     /**
+     * Refreshes the access token by calling the refresh endpoint.
+     * @returns Promise that resolves when the token is refreshed.
+     * @throws Error if the refresh request fails.
+     */
+    private async refreshToken(): Promise<void> {
+        const response = await fetch(`${SNCFMaxJeuneAPI.BASE_URL}/auth/refresh`, {
+            method: "POST",
+            headers: {
+                ...SNCFMaxJeuneAPI.DEFAULT_HEADERS,
+                Cookie: `auth=${this._accessToken}`,
+            },
+        });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`Token refresh failed (${response.status}): ${errorText}`);
+        }
+
+        const newAuthCookie = this.extractAuthCookieFromHeaders(response);
+        if (newAuthCookie && newAuthCookie !== this._accessToken) {
+            this._accessToken = newAuthCookie;
+        } else {
+            throw new Error("Token refresh did not return a new auth cookie");
+        }
+    }
+
+    /**
      * Makes an authenticated request to the SNCF Max Jeune API.
-     * Automatically handles token refresh if a new auth cookie is returned.
+     * Automatically handles token refresh if expired or if a new auth cookie is returned.
      * @param url - The API endpoint URL.
      * @param options - Additional fetch options.
+     * @param retryOnRefresh - Whether to retry the request after token refresh (default: true).
      * @returns The Response object.
      * @throws Error if the API request fails.
      */
-    private async makeRequest(url: string, options: RequestInit = {}): Promise<Response> {
+    private async makeRequest(
+        url: string,
+        options: RequestInit = {},
+        retryOnRefresh: boolean = true,
+    ): Promise<Response> {
         const response = await fetch(url, {
             ...options,
             headers: {
@@ -111,9 +143,17 @@ export default class SNCFMaxJeuneAPI {
             },
         });
 
-        const newAuthCookie = this.extractAuthCookieFromHeaders(response);
-        if (newAuthCookie && newAuthCookie !== this._accessToken) {
-            this._accessToken = newAuthCookie;
+        if ((response.status === 401 || response.status === 403) && retryOnRefresh) {
+            const errorText = await response.text();
+
+            try {
+                await this.refreshToken();
+                return this.makeRequest(url, options, false);
+            } catch (refreshError: any) {
+                throw new Error(
+                    `API request failed due to expired token, and refresh failed: ${refreshError.message}. Original error (${response.status}): ${errorText}`,
+                );
+            }
         }
 
         if (!response.ok) {
