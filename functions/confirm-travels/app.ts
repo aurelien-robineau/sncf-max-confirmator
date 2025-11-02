@@ -47,7 +47,7 @@ async function getUsers(): Promise<SNCFUser[]> {
 
     users = users.filter((user) => user.accessToken);
 
-    console.debug(`Found ${users.length} users with access token.`);
+    console.debug(`Found ${users.length} valid users.`);
 
     return users;
 }
@@ -58,20 +58,16 @@ async function getUsers(): Promise<SNCFUser[]> {
  * @returns The number of confirmed travels for each card number.
  */
 export async function confirmUserTravels(users: SNCFUser[]): Promise<{ [key: string]: number }> {
-    console.debug(`Confirming travels for ${users.length} users...`);
-
     const oneDayAgo = new Date(Date.now() - 1000 * 60 * 60 * 24);
     const confirmedTravelsCount: { [key: string]: number } = {};
 
     for (const user of users) {
-        console.debug(`Confirming travels for user: ${user.name}`);
-
         const { accessToken } = user;
         const sncfApi = new SNCFMaxJeuneAPI(accessToken);
 
         let customerInfo;
         try {
-            console.debug(`Retrieving customer info for user: ${user.name}`);
+            console.debug(`Retrieving customer info for user ${user.name}...`);
 
             customerInfo = await sncfApi.getCustomerInfo();
             user.accessToken = sncfApi.accessToken;
@@ -86,13 +82,14 @@ export async function confirmUserTravels(users: SNCFUser[]): Promise<{ [key: str
         );
 
         if (validCards.length === 0) {
-            console.log(`No valid TGV_MAX_JEUNE cards found for user`);
+            console.debug(`No valid TGV_MAX_JEUNE cards found for user ${user.name}.`);
             continue;
+        } else {
+            console.debug(`Found ${validCards.length} valid TGV_MAX_JEUNE cards for user ${user.name}:`);
+            validCards.forEach((card) => console.debug(`- ${card.cardNumber}`));
         }
 
         for (const card of validCards) {
-            console.debug(`Processing card: ${card.cardNumber}`);
-
             const cardNumber = card.cardNumber;
             if (!confirmedTravelsCount[cardNumber]) {
                 confirmedTravelsCount[cardNumber] = 0;
@@ -100,7 +97,7 @@ export async function confirmUserTravels(users: SNCFUser[]): Promise<{ [key: str
 
             let travels: Travel[] = [];
             try {
-                console.debug(`Retrieving travels for card number: ${card.cardNumber}`);
+                console.debug(`Retrieving travels for card number ${card.cardNumber}...`);
                 travels = await sncfApi.getTravels(cardNumber, oneDayAgo);
                 user.accessToken = sncfApi.accessToken;
             } catch (err: any) {
@@ -108,18 +105,18 @@ export async function confirmUserTravels(users: SNCFUser[]): Promise<{ [key: str
                 continue;
             }
 
-            console.debug(`Found ${travels.length} travels for card number: ${cardNumber}`);
+            console.debug(`Found ${travels.length} travels for card number ${cardNumber}.`);
 
             const travelsToConfirm = travels.filter((travel) => travel.travelConfirmed === "TO_BE_CONFIRMED");
-            console.debug(`Found ${travelsToConfirm.length} travels to confirm for card number: ${cardNumber}`);
+            console.debug(`Found ${travelsToConfirm.length} travels to confirm for card number ${cardNumber}.`);
 
             if (travelsToConfirm.length === 0) {
-                console.debug(`No travels to confirm for card number: ${cardNumber}`);
+                console.debug(`No travels to confirm for card number ${cardNumber}.`);
                 continue;
             }
 
             for (const travel of travelsToConfirm) {
-                console.debug(`Confirming travel: ${travel.orderId} for card number: ${cardNumber}`);
+                console.debug(`Confirming travel ${travel.orderId} for card number ${cardNumber}...`);
 
                 try {
                     await sncfApi.confirmTravel(travel);
