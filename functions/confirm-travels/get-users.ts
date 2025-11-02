@@ -15,6 +15,11 @@ export interface SNCFUser {
    * The access token (opaque auth token) of the SNCF user.
    */
   accessToken: string;
+
+  /**
+   * The DataDome cookie (optional, helps bypass bot protection).
+   */
+  datadomeCookie?: string;
 }
 
 /**

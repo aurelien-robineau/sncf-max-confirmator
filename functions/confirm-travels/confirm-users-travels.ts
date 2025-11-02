@@ -13,8 +13,8 @@ export async function confirmUsersTravels(users: SNCFUser[]): Promise<{ [key: st
   const confirmedTravelsCount: { [key: string]: number } = {};
 
   for (const user of users) {
-    const { accessToken } = user;
-    const sncfApi = new SNCFMaxJeuneAPI(accessToken);
+    const { accessToken, datadomeCookie } = user;
+    const sncfApi = new SNCFMaxJeuneAPI(accessToken, datadomeCookie);
 
     let customerInfo;
     try {
@@ -22,6 +22,7 @@ export async function confirmUsersTravels(users: SNCFUser[]): Promise<{ [key: st
 
       customerInfo = await sncfApi.getCustomerInfo();
       user.accessToken = sncfApi.accessToken;
+      user.datadomeCookie = sncfApi.datadomeCookie || undefined;
       user.name = `${customerInfo.firstName} ${customerInfo.lastName}`;
     } catch (err: any) {
       console.error(`Error retrieving customer info for user ${user.name}: ${err.message}`);
@@ -36,7 +37,7 @@ export async function confirmUsersTravels(users: SNCFUser[]): Promise<{ [key: st
       console.debug(`No valid TGV_MAX_JEUNE cards found for user ${user.name}.`);
       continue;
     } else {
-      console.debug(`Found ${validCards.length} valid TGV_MAX_JEUNE cards for user ${user.name}:`);
+      console.debug(`Found ${validCards.length} valid TGV_MAX_JEUNE card(s) for user ${user.name}:`);
       validCards.forEach((card) => console.debug(`- ${card.cardNumber}`));
     }
 
@@ -51,6 +52,7 @@ export async function confirmUsersTravels(users: SNCFUser[]): Promise<{ [key: st
         console.debug(`Retrieving travels for card number ${card.cardNumber}...`);
         travels = await sncfApi.getTravels(cardNumber, oneDayAgo);
         user.accessToken = sncfApi.accessToken;
+        user.datadomeCookie = sncfApi.datadomeCookie || undefined;
       } catch (err: any) {
         console.error(`Error retrieving travels for card number ${cardNumber}: ${err.message}`);
         continue;
@@ -72,6 +74,7 @@ export async function confirmUsersTravels(users: SNCFUser[]): Promise<{ [key: st
         try {
           await sncfApi.confirmTravel(travel);
           user.accessToken = sncfApi.accessToken;
+          user.datadomeCookie = sncfApi.datadomeCookie || undefined;
           confirmedTravelsCount[cardNumber]++;
         } catch (err: any) {
           console.error(`Error confirming travel ${travel.orderId} for card number ${cardNumber}: ${err.message}`);

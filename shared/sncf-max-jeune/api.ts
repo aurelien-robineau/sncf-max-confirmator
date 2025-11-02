@@ -53,6 +53,9 @@ export default class SNCFMaxJeuneAPI {
   private static DEFAULT_HEADERS = {
     "Content-Type": "application/json",
     Accept: "application/json",
+    "Accept-Language": "fr-FR,fr;q=0.9,en-GB;q=0.8,en;q=0.7,en-US;q=0.6,it;q=0.5",
+    "User-Agent":
+      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36",
     "X-Client-App": "MAX_JEUNE",
     "X-Client-App-Version": "2.42.1",
     "X-Distribution-Channel": "OUI",
@@ -61,13 +64,18 @@ export default class SNCFMaxJeuneAPI {
   };
 
   private _accessToken: string;
+  private _datadomeCookie: string | null = null;
 
   /**
    * Creates a new SNCFMaxJeuneAPI instance.
    * @param accessToken - The initial access token (auth cookie) for authentication.
+   * @param datadomeCookie - Optional DataDome cookie to help bypass bot protection.
    */
-  constructor(accessToken: string) {
+  constructor(accessToken: string, datadomeCookie?: string) {
     this._accessToken = accessToken;
+    if (datadomeCookie) {
+      this._datadomeCookie = datadomeCookie;
+    }
   }
 
   /**
@@ -80,18 +88,65 @@ export default class SNCFMaxJeuneAPI {
   }
 
   /**
-   * Extracts the auth cookie from the Set-Cookie header of an API response.
-   * @param response - The fetch Response object.
-   * @returns The auth cookie value, or null if not found.
+   * Gets the current DataDome cookie.
+   * The cookie is automatically updated when API responses include new datadome cookies.
+   * @returns The current DataDome cookie, or null if not set.
    */
-  private extractAuthCookieFromHeaders(response: Response): string | null {
-    const setCookieHeader = response.headers.get("Set-Cookie");
-    if (!setCookieHeader) {
-      return null;
+  public get datadomeCookie(): string | null {
+    return this._datadomeCookie;
+  }
+
+  /**
+   * Extracts a cookie value from the Set-Cookie header(s) of an API response.
+   * Handles multiple Set-Cookie headers by checking all of them.
+   * @param response - The fetch Response object.
+   * @param cookieName - The name of the cookie to extract.
+   * @returns The cookie value, or null if not found.
+   */
+  private extractCookieFromHeaders(response: Response, cookieName: string): string | null {
+    // Get all Set-Cookie headers (there might be multiple)
+    const setCookieHeaders = [response.headers.get("Set-Cookie")].filter(Boolean);
+
+    for (const setCookieHeader of setCookieHeaders) {
+      if (!setCookieHeader) continue;
+
+      // Escape special regex characters in cookie name
+      const escapedName = cookieName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const match = setCookieHeader.match(new RegExp(`${escapedName}=([^;]+)`));
+      if (match) {
+        return match[1].trim();
+      }
     }
 
-    const match = setCookieHeader.match(/auth=([^;]+)/);
-    return match ? match[1].trim() : null;
+    return null;
+  }
+
+  /**
+   * Builds the Cookie header string including auth and datadome cookies.
+   * @returns The Cookie header value.
+   */
+  private buildCookieHeader(): string {
+    const cookies = [`auth=${this._accessToken}`];
+    if (this._datadomeCookie) {
+      cookies.push(`datadome=${this._datadomeCookie}`);
+    }
+    return cookies.join("; ");
+  }
+
+  /**
+   * Updates cookies from a response (auth and datadome).
+   * @param response - The fetch Response object.
+   */
+  private updateCookiesFromResponse(response: Response): void {
+    const newAuthCookie = this.extractCookieFromHeaders(response, "auth");
+    if (newAuthCookie && newAuthCookie !== this._accessToken) {
+      this._accessToken = newAuthCookie;
+    }
+
+    const datadomeCookie = this.extractCookieFromHeaders(response, "datadome");
+    if (datadomeCookie) {
+      this._datadomeCookie = datadomeCookie;
+    }
   }
 
   /**
@@ -100,25 +155,35 @@ export default class SNCFMaxJeuneAPI {
    * @throws Error if the refresh request fails.
    */
   private async refreshToken(): Promise<void> {
-    const { "Content-Type": _, ...refreshHeaders } = SNCFMaxJeuneAPI.DEFAULT_HEADERS;
+    const { "Content-Type": _, "X-Distribution-Channel": __, ...refreshHeaders } = SNCFMaxJeuneAPI.DEFAULT_HEADERS;
 
-    const response = await fetch(`${SNCFMaxJeuneAPI.BASE_URL}/auth/refresh`, {
+    const cookieHeader = this.buildCookieHeader();
+    const refreshUrl = `${SNCFMaxJeuneAPI.BASE_URL}/auth/refresh`;
+
+    const response = await fetch(refreshUrl, {
       method: "POST",
       headers: {
         ...refreshHeaders,
-        Cookie: `auth=${this._accessToken}`,
+        Referer: "https://www.maxjeune-tgvinoui.sncf/sncf-connect",
+        Cookie: cookieHeader,
       },
     });
 
+    this.updateCookiesFromResponse(response);
+
+    const responseBody = await response.text();
+
     if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Token refresh failed (${response.status}): ${errorText}`);
+      const responseHeaders = Object.fromEntries(response.headers.entries());
+      throw new Error(
+        `Token refresh failed (${response.status}): ${responseBody}. Response headers: ${JSON.stringify(
+          responseHeaders,
+        )}`,
+      );
     }
 
-    const newAuthCookie = this.extractAuthCookieFromHeaders(response);
-    if (newAuthCookie && newAuthCookie !== this._accessToken) {
-      this._accessToken = newAuthCookie;
-    } else {
+    const newAuthCookie = this.extractCookieFromHeaders(response, "auth");
+    if (!newAuthCookie || newAuthCookie === this._accessToken) {
       throw new Error("Token refresh did not return a new auth cookie");
     }
   }
@@ -137,10 +202,12 @@ export default class SNCFMaxJeuneAPI {
       ...options,
       headers: {
         ...SNCFMaxJeuneAPI.DEFAULT_HEADERS,
-        Cookie: `auth=${this._accessToken}`,
+        Cookie: this.buildCookieHeader(),
         ...options.headers,
       },
     });
+
+    this.updateCookiesFromResponse(response);
 
     if ((response.status === 401 || response.status === 403) && retryOnRefresh) {
       const errorText = await response.text();
