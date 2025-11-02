@@ -227,6 +227,10 @@ export default class SNCFMaxJeuneAPI {
       throw new Error(`API request failed (${response.status}): ${errorText}`);
     }
 
+    this.refreshToken().catch((err) => {
+      console.debug(`Proactive token refresh failed: ${err.message}`);
+    });
+
     return response;
   }
 
