@@ -16,6 +16,7 @@ export interface Travel {
     | "TOO_LATE_TO_CONFIRM"
     | "TO_BE_CONFIRMED"
     | "WILL_BE_CANCELED"
+    | "CANCELED"
     | "CONFIRMED";
 }
 
